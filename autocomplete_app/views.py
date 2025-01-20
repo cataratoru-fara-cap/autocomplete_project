@@ -1,6 +1,8 @@
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.shortcuts import render
+from django.http import JsonResponse
+from django.views import View
 
 DATASET = [
     "To Kill a Mockingbird",
@@ -25,21 +27,55 @@ DATASET = [
     "A Tale of Two Cities",
 ]
 
+
+class TrieNode:
+    def __init__(self):
+        self.children = {}
+        self.is_end_of_word = False
+
+
+class SuffixTrie:
+    def __init__(self):
+        self.root = TrieNode()
+
+    def insert(self, word):
+        for i in range(len(word)):
+            current = self.root
+            for char in word[i:]:
+                if char not in current.children:
+                    current.children[char] = TrieNode()
+                current = current.children[char]
+            current.is_end_of_word = True
+
+    def _search_node(self, prefix):
+        current = self.root
+        for char in prefix:
+            if char not in current.children:
+                return None
+            current = current.children[char]
+        return current
+
+    def _collect_all_words(self, node, prefix, words):
+        if node.is_end_of_word:
+            words.append(prefix)
+        for char, child_node in node.children.items():
+            self._collect_all_words(child_node, prefix + char, words)
+
+    def autocomplete(self, prefix):
+        node = self._search_node(prefix)
+        if not node:
+            return []
+        words = []
+        self._collect_all_words(node, prefix, words)
+        return words
+
+
+# Initialize the trie with some data
+trie = SuffixTrie()
+for word in DATASET:
+    trie.insert(word.lower())
+
 # Preprocess the dataset to create a suffix array with lowercase titles
-suffix_array = sorted((book[i:].lower(), book) for book in DATASET for i in range(len(book)))
-
-
-def binary_search(query):
-    """Binary search for the query in the suffix array."""
-    low, high = 0, len(suffix_array)
-    while low < high:
-        mid = (low + high) // 2
-        if suffix_array[mid][0] < query:
-            low = mid + 1
-        else:
-            high = mid
-    return low
-
 
 @api_view(["GET"])
 def autocomplete(request):
@@ -47,24 +83,7 @@ def autocomplete(request):
     if not query:
         return Response([])
 
-    # Debug: Print the query
-    print(f"Query: {query}")
-
-    # Find the starting index of matches
-    start = binary_search(query)
-    suggestions = []
-
-    # Collect all matches starting from the found index
-    for i in range(start, len(suffix_array)):
-        suffix, book = suffix_array[i]
-        if suffix.startswith(query):
-            suggestions.append(book)
-        else:
-            break
-
-    # Debug: Print the suggestions
-    print(f"Suggestions: {suggestions}")
-
+    suggestions = trie.autocomplete(query)
     return Response(suggestions)
 
 
